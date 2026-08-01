@@ -15,7 +15,6 @@ namespace DeepSeekWidget {
         readonly Config _config;
         readonly Button _btnRecharge;
         readonly TextBlock _txtBalance;
-        readonly TextBlock _txtBalanceDetail;
         readonly TextBlock _txtUsage;
         readonly TextBlock _txtUpdated;
         readonly TextBlock _txtWatermark;
@@ -39,7 +38,7 @@ namespace DeepSeekWidget {
         public WidgetWindow(Config config) {
             _config = config;
             Width = 312;
-            Height = 220;
+            Height = 200;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
@@ -65,8 +64,8 @@ namespace DeepSeekWidget {
             };
 
             var grid = new Grid { Margin = new Thickness(14, 10, 12, 8) };
-            for (int i = 0; i < 6; i++) grid.RowDefinitions.Add(new RowDefinition());
-            grid.RowDefinitions[5].Height = new GridLength(1, GridUnitType.Star);
+            for (int i = 0; i < 5; i++) grid.RowDefinitions.Add(new RowDefinition());
+            grid.RowDefinitions[4].Height = new GridLength(1, GridUnitType.Star);
             grid.RowDefinitions[1].MinHeight = 38; // 余额行留足高度，避免大号数字底部被裁剪
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -112,16 +111,6 @@ namespace DeepSeekWidget {
             Grid.SetColumnSpan(_txtBalance, 2);
             grid.Children.Add(_txtBalance);
 
-            _txtBalanceDetail = new TextBlock {
-                Foreground = TextSub,
-                FontSize = 11,
-                Margin = new Thickness(0, 0, 0, 0),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            Grid.SetRow(_txtBalanceDetail, 2);
-            Grid.SetColumnSpan(_txtBalanceDetail, 2);
-            grid.Children.Add(_txtBalanceDetail);
-
             var usageTitle = new TextBlock {
                 Text = "今日用量",
                 Foreground = TextSub,
@@ -129,7 +118,7 @@ namespace DeepSeekWidget {
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 10, 0, 0)
             };
-            Grid.SetRow(usageTitle, 3);
+            Grid.SetRow(usageTitle, 2);
             Grid.SetColumnSpan(usageTitle, 2);
             grid.Children.Add(usageTitle);
 
@@ -140,7 +129,7 @@ namespace DeepSeekWidget {
                 Margin = new Thickness(0, 2, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            Grid.SetRow(_txtUsage, 4);
+            Grid.SetRow(_txtUsage, 3);
             Grid.SetColumnSpan(_txtUsage, 2);
             grid.Children.Add(_txtUsage);
 
@@ -150,7 +139,7 @@ namespace DeepSeekWidget {
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Bottom
             };
-            Grid.SetRow(_txtUpdated, 5);
+            Grid.SetRow(_txtUpdated, 4);
             Grid.SetColumn(_txtUpdated, 1);
             grid.Children.Add(_txtUpdated);
 
@@ -163,7 +152,7 @@ namespace DeepSeekWidget {
                 VerticalAlignment = VerticalAlignment.Bottom,
                 Margin = new Thickness(0, 0, 4, 0)
             };
-            Grid.SetRow(_txtWatermark, 5);
+            Grid.SetRow(_txtWatermark, 4);
             Grid.SetColumn(_txtWatermark, 0);
             grid.Children.Add(_txtWatermark);
 
@@ -406,21 +395,18 @@ namespace DeepSeekWidget {
 
         public void UpdateData(BalanceInfo bal, UsageInfo usage, DateTime updated) {
             if (bal == null) bal = new BalanceInfo();
+            string balErr = null;
             if (bal.HasKey && string.IsNullOrEmpty(bal.Error)) {
                 _txtBalance.Text = Money(bal.Currency, bal.Total);
-                string detail = "充值 " + Money(bal.Currency, bal.ToppedUp);
-                if (!bal.IsAvailable) detail += "（余额不可用）";
-                _txtBalanceDetail.Text = detail;
             } else if (!bal.HasKey) {
                 _txtBalance.Text = "未登录";
-                _txtBalanceDetail.Text = "托盘右键 → 登录 DeepSeek 账号";
             } else {
                 _txtBalance.Text = "余额获取失败";
-                _txtBalanceDetail.Text = bal.Error;
+                balErr = bal.Error;
             }
 
             if (usage == null) {
-                _txtUsage.Text = "";
+                _txtUsage.Text = balErr ?? "";
             } else if (!usage.HasSession) {
                 _txtUsage.Text = "登录后显示";
             } else if (usage.SessionExpired) {
@@ -431,7 +417,8 @@ namespace DeepSeekWidget {
                     ? "获取失败（详见日志）"
                     : usage.Error;
             } else {
-                _txtUsage.Text = Money("CNY", usage.CostToday) + "  ·  " + FormatTokens(usage.TokensToday);
+                _txtUsage.Text = balErr
+                    ?? (Money("CNY", usage.CostToday) + "  ·  " + FormatTokens(usage.TokensToday));
             }
             _txtUpdated.Text = "更新于 " + updated.ToString("HH:mm");
         }
