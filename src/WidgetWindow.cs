@@ -18,7 +18,7 @@ namespace DeepSeekWidget {
         readonly TextBlock _txtUsage;
         readonly TextBlock _txtUpdated;
         readonly TextBlock _txtWatermark;
-        readonly Border _card;
+        readonly SquircleBorder _card;
         DispatcherTimer _bottomTimer;
         DispatcherTimer _moveTimer;
         DispatcherTimer _clickTimer;
@@ -49,8 +49,8 @@ namespace DeepSeekWidget {
             Title = "DeepSeekWidget";
             FontFamily = new FontFamily("Microsoft YaHei UI");
 
-            _card = new Border {
-                CornerRadius = new CornerRadius(14),
+            _card = new SquircleBorder {
+                SquircleRadius = 14, // iOS 风格 G3 连续曲率圆角（超椭圆 n=5）
                 Background = new SolidColorBrush(Color.FromArgb(0xB3, 0x1E, 0x22, 0x2A)),
                 BorderBrush = BorderNormal,
                 BorderThickness = new Thickness(1),
