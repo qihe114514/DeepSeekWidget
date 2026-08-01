@@ -11,6 +11,7 @@ namespace DeepSeekWidget {
         public const int WM_MOUSEACTIVATE = 0x0021;
         public const int WM_ENTERSIZEMOVE = 0x0231;
         public const int WM_EXITSIZEMOVE = 0x0232;
+        public const int WM_WINDOWPOSCHANGING = 0x0046;
         public const int HTCAPTION = 2;
         public const int HTCLIENT = 1;
         public const int HTTRANSPARENT = -1;
@@ -18,7 +19,9 @@ namespace DeepSeekWidget {
         public const int SWP_NOSIZE = 0x0001;
         public const int SWP_NOMOVE = 0x0002;
         public const int SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_HIDEWINDOW = 0x0080;
         public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+        public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         public const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
 
         [DllImport("user32.dll")]
@@ -41,5 +44,16 @@ namespace DeepSeekWidget {
 
         [DllImport("user32.dll")]
         public static extern bool DestroyIcon(IntPtr hIcon);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        public struct WINDOWPOS {
+            public IntPtr hwnd;
+            public IntPtr hwndInsertAfter;
+            public int x;
+            public int y;
+            public int cx;
+            public int cy;
+            public uint flags;
+        }
     }
 }

@@ -18,10 +18,14 @@ namespace DeepSeekWidget {
         public event Action ExitRequested;
         public event Action<bool> AutoStartChanged;
         public event Action<int> RefreshIntervalChanged;
+        public event Action<bool> PinModeChanged;
+        public event Action AboutRequested;
 
         readonly List<Tuple<ToolStripMenuItem, int>> _refreshItems = new List<Tuple<ToolStripMenuItem, int>>();
+        readonly ToolStripMenuItem _miPinTop;
+        readonly ToolStripMenuItem _miPinBottom;
 
-        public TrayIcon(int refreshSeconds) {
+        public TrayIcon(int refreshSeconds, bool pinTop) {
             using (var bmp = new Bitmap(32, 32)) {
                 _hIcon = DrawIcon(bmp);
             }
@@ -39,12 +43,26 @@ namespace DeepSeekWidget {
             var miReset = new ToolStripMenuItem("重置位置");
             miReset.Click += (s, e) => { if (ResetPositionRequested != null) ResetPositionRequested(); };
 
+            // 位置子菜单：移动位置 / 重置位置
+            var miPosition = new ToolStripMenuItem("位置");
+            miPosition.DropDownItems.Add(miMove);
+            miPosition.DropDownItems.Add(miReset);
+
             var miAuto = new ToolStripMenuItem("开机自启动") { Checked = AutoStart.IsEnabled() };
             miAuto.Click += (s, e) => {
                 bool v = !miAuto.Checked;
                 miAuto.Checked = v;
                 if (AutoStartChanged != null) AutoStartChanged(v);
             };
+
+            // 窗口层级子菜单：置顶 / 置底（互斥勾选，默认置底）
+            _miPinTop = new ToolStripMenuItem("窗口置顶") { Checked = pinTop };
+            _miPinTop.Click += (s, e) => SelectPin(true);
+            _miPinBottom = new ToolStripMenuItem("窗口置底") { Checked = !pinTop };
+            _miPinBottom.Click += (s, e) => SelectPin(false);
+            var miLayer = new ToolStripMenuItem("窗口层级");
+            miLayer.DropDownItems.Add(_miPinTop);
+            miLayer.DropDownItems.Add(_miPinBottom);
 
             var miLogin = new ToolStripMenuItem("登录 DeepSeek 账号…");
             miLogin.Click += (s, e) => { if (LoginRequested != null) LoginRequested(); };
@@ -65,11 +83,20 @@ namespace DeepSeekWidget {
                 miRefresh.DropDownItems.Add(mi);
             }
 
+            var miAbout = new ToolStripMenuItem("关于");
+            miAbout.Click += (s, e) => { if (AboutRequested != null) AboutRequested(); };
+
             var miExit = new ToolStripMenuItem("退出");
             miExit.Click += (s, e) => { if (ExitRequested != null) ExitRequested(); };
 
-            _menu.Items.AddRange(new ToolStripItem[] { miMove, miReset, miAuto, miRefresh, miLogin, miExit });
+            _menu.Items.AddRange(new ToolStripItem[] { miPosition, miLayer, miRefresh, miAuto, miLogin, miAbout, miExit });
             _notify.ContextMenuStrip = _menu;
+        }
+
+        void SelectPin(bool top) {
+            _miPinTop.Checked = top;
+            _miPinBottom.Checked = !top;
+            if (PinModeChanged != null) PinModeChanged(top);
         }
 
         void SelectRefresh(int sec) {

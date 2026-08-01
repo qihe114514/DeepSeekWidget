@@ -13,6 +13,7 @@ namespace DeepSeekWidget {
         public double? WindowX;
         public double? WindowY;
         public int RefreshSeconds = 120;
+        public string PinMode = "bottom"; // "bottom" 置底（默认） / "top" 置顶
 
         [ScriptIgnore]
         public string ApiKeyPlain {
@@ -82,6 +83,7 @@ namespace DeepSeekWidget {
                         cfg.WindowX = loaded.WindowX;
                         cfg.WindowY = loaded.WindowY;
                         if (loaded.RefreshSeconds >= 30) cfg.RefreshSeconds = loaded.RefreshSeconds;
+                        if (loaded.PinMode == "top" || loaded.PinMode == "bottom") cfg.PinMode = loaded.PinMode;
                     }
                 }
             } catch {

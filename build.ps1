@@ -60,6 +60,14 @@ $refs = @(
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $out = Join-Path $dist 'DeepSeekWidget.exe'
 
+# 复制图标资源（关于窗口使用）
+$iconSrc = Join-Path $root 'assets\icons'
+$iconDst = Join-Path $dist 'icons'
+if (Test-Path $iconSrc) {
+    New-Item -ItemType Directory -Force -Path $iconDst | Out-Null
+    Copy-Item (Join-Path $iconSrc '*') $iconDst -Force
+}
+
 $resourcePairs = @(
     @((Join-Path $pkg 'lib\net462\Microsoft.Web.WebView2.Core.dll'), 'DeepSeekWidget.Bin.WebView2.Core.dll'),
     @((Join-Path $pkg 'lib\net462\Microsoft.Web.WebView2.Wpf.dll'), 'DeepSeekWidget.Bin.WebView2.Wpf.dll'),

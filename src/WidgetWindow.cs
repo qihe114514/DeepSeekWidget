@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,10 +18,12 @@ namespace DeepSeekWidget {
         readonly TextBlock _txtBalanceDetail;
         readonly TextBlock _txtUsage;
         readonly TextBlock _txtUpdated;
+        readonly TextBlock _txtWatermark;
         readonly Border _card;
         DispatcherTimer _bottomTimer;
         HwndSource _source;
         bool _moveMode;
+        bool _pinTop;
 
         static readonly Brush BorderNormal = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
         static readonly Brush BorderMove = new SolidColorBrush(Color.FromArgb(255, 45, 127, 249));
@@ -146,8 +149,21 @@ namespace DeepSeekWidget {
                 VerticalAlignment = VerticalAlignment.Bottom
             };
             Grid.SetRow(_txtUpdated, 5);
-            Grid.SetColumnSpan(_txtUpdated, 2);
+            Grid.SetColumn(_txtUpdated, 1);
             grid.Children.Add(_txtUpdated);
+
+            _txtWatermark = new TextBlock {
+                Text = "@其核",
+                Foreground = TextDim,
+                FontSize = 10,
+                Opacity = 0.45,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 4, 0)
+            };
+            Grid.SetRow(_txtWatermark, 5);
+            Grid.SetColumn(_txtWatermark, 0);
+            grid.Children.Add(_txtWatermark);
 
             _card.Child = grid;
             Content = _card;
@@ -194,6 +210,19 @@ namespace DeepSeekWidget {
         }
 
         IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {
+            if (msg == Win32.WM_WINDOWPOSCHANGING) {
+                // 拦截 SWP_HIDEWINDOW：Win+D 显示桌面时保持小组件可见
+                try {
+                    var wp = (Win32.WINDOWPOS)Marshal.PtrToStructure(lParam, typeof(Win32.WINDOWPOS));
+                    if ((wp.flags & Win32.SWP_HIDEWINDOW) != 0) {
+                        wp.flags &= ~Win32.SWP_HIDEWINDOW;
+                        Marshal.StructureToPtr(wp, lParam, false);
+                        handled = true;
+                    }
+                } catch {
+                }
+                return IntPtr.Zero;
+            }
             if (msg == Win32.WM_NCHITTEST) {
                 int x = unchecked((short)(lParam.ToInt64() & 0xFFFF));
                 int y = unchecked((short)((lParam.ToInt64() >> 16) & 0xFFFF));
@@ -223,8 +252,20 @@ namespace DeepSeekWidget {
             if (_moveMode || _source == null) return;
             ClampIntoView();
             IntPtr hwnd = new WindowInteropHelper(this).Handle;
-            Win32.SetWindowPos(hwnd, Win32.HWND_BOTTOM, 0, 0, 0, 0,
+            // 置顶模式保持最前；置底模式保持在底部（默认）
+            IntPtr after = _pinTop ? Win32.HWND_TOPMOST : Win32.HWND_BOTTOM;
+            Win32.SetWindowPos(hwnd, after, 0, 0, 0, 0,
                 Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
+        }
+
+        public void SetPinMode(bool top) {
+            _pinTop = top;
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) {
+                Win32.SetWindowPos(hwnd, top ? Win32.HWND_TOPMOST : Win32.HWND_BOTTOM, 0, 0, 0, 0,
+                    Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
+            }
+            Log.Write("窗口层级改为: " + (top ? "置顶" : "置底"));
         }
 
         void PositionFromConfig() {
@@ -324,16 +365,16 @@ namespace DeepSeekWidget {
             if (usage == null) {
                 _txtUsage.Text = "";
             } else if (!usage.HasSession) {
-                _txtUsage.Text = "今日用量：登录后显示";
+                _txtUsage.Text = "登录后显示";
             } else if (usage.SessionExpired) {
-                _txtUsage.Text = "今日用量：登录已过期，请重新登录（托盘 → 登录 DeepSeek 账号）";
+                _txtUsage.Text = "登录已过期，请重新登录（托盘 → 登录 DeepSeek 账号）";
             } else if (usage.ParseFailed || usage.Error.Length > 0) {
                 // 展示具体失败原因（如超时/Key 无效/频率限制），不再笼统显示"获取失败"
                 _txtUsage.Text = string.IsNullOrEmpty(usage.Error)
-                    ? "今日用量：获取失败（详见日志）"
-                    : "今日用量：" + usage.Error;
+                    ? "获取失败（详见日志）"
+                    : usage.Error;
             } else {
-                _txtUsage.Text = "今日用量  " + Money("CNY", usage.CostToday) + "  ·  " + FormatTokens(usage.TokensToday);
+                _txtUsage.Text = Money("CNY", usage.CostToday) + "  ·  " + FormatTokens(usage.TokensToday);
             }
             _txtUpdated.Text = "更新于 " + updated.ToString("HH:mm");
         }

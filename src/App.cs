@@ -107,7 +107,7 @@ namespace DeepSeekWidget {
             Log.Write("配置已加载");
             _widget = new WidgetWindow(Config);
             Log.Write("组件窗口已创建");
-            _tray = new TrayIcon(Config.RefreshSeconds);
+            _tray = new TrayIcon(Config.RefreshSeconds, Config.PinMode == "top");
             Log.Write("托盘已创建");
             _tray.MoveRequested += () => _widget.ToggleMoveMode();
             _tray.ResetPositionRequested += () => _widget.ResetPosition();
@@ -121,7 +121,16 @@ namespace DeepSeekWidget {
                 _refreshTimer.Start();
                 Log.Write("刷新频率改为 " + seconds + " 秒");
             };
+            _tray.PinModeChanged += top => {
+                Config.PinMode = top ? "top" : "bottom";
+                Config.Save();
+                _widget.SetPinMode(top);
+            };
+            _tray.AboutRequested += OpenAbout;
             _tray.ExitRequested += Shutdown;
+
+            // 启动时应用保存的置顶/置底模式（默认置底）
+            _widget.SetPinMode(Config.PinMode == "top");
 
             int sec = Math.Max(30, Config.RefreshSeconds);
             _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(sec) };
@@ -152,7 +161,6 @@ namespace DeepSeekWidget {
             if (_refreshing) return;
             _refreshing = true;
             try {
-                _widget.ShowLoading();
                 string token = Config.PlatformTokenPlain;
                 string cookie = Config.CookieHeaderPlain;
                 var bal = await ApiClient.FetchPlatformBalanceAsync(token, cookie);
@@ -184,6 +192,10 @@ namespace DeepSeekWidget {
 
         public void OpenLogin() {
             new LoginWindow().Show();
+        }
+
+        public void OpenAbout() {
+            new AboutWindow().Show();
         }
 
         public void OpenRecharge() {
