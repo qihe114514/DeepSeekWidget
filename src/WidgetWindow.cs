@@ -21,6 +21,7 @@ namespace DeepSeekWidget {
         readonly TextBlock _txtWatermark;
         readonly Border _card;
         DispatcherTimer _bottomTimer;
+        DispatcherTimer _moveTimer;
         HwndSource _source;
         bool _moveMode;
         bool _pinTop;
@@ -185,6 +186,7 @@ namespace DeepSeekWidget {
 
             Closed += (s, e) => {
                 if (_bottomTimer != null) _bottomTimer.Stop();
+                if (_moveTimer != null) _moveTimer.Stop();
                 if (_source != null) _source.RemoveHook(WndProc);
             };
         }
@@ -325,10 +327,20 @@ namespace DeepSeekWidget {
                 Cursor = Cursors.SizeAll;
                 _card.BorderBrush = BorderMove;
                 _card.BorderThickness = new Thickness(1.5);
+                // 超时兜底：避免点了“移动位置”但没拖动时永久卡在移动模式（鼠标穿透失效）
+                if (_moveTimer == null) {
+                    _moveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+                    _moveTimer.Tick += (s, e) => {
+                        if (_moveMode) EndMoveMode(false);
+                    };
+                }
+                _moveTimer.Stop();
+                _moveTimer.Start();
             } else {
                 Cursor = Cursors.Arrow;
                 _card.BorderBrush = BorderNormal;
                 _card.BorderThickness = new Thickness(1);
+                if (_moveTimer != null) _moveTimer.Stop();
             }
         }
 
