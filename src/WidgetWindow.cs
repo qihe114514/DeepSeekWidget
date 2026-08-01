@@ -32,7 +32,7 @@ namespace DeepSeekWidget {
         public WidgetWindow(Config config) {
             _config = config;
             Width = 312;
-            Height = 192;
+            Height = 220;
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
@@ -58,8 +58,9 @@ namespace DeepSeekWidget {
             };
 
             var grid = new Grid { Margin = new Thickness(14, 10, 12, 8) };
-            for (int i = 0; i < 5; i++) grid.RowDefinitions.Add(new RowDefinition());
-            grid.RowDefinitions[4].Height = new GridLength(1, GridUnitType.Star);
+            for (int i = 0; i < 6; i++) grid.RowDefinitions.Add(new RowDefinition());
+            grid.RowDefinitions[5].Height = new GridLength(1, GridUnitType.Star);
+            grid.RowDefinitions[1].MinHeight = 38; // 余额行留足高度，避免大号数字底部被裁剪
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition());
 
@@ -99,7 +100,8 @@ namespace DeepSeekWidget {
                 Foreground = TextMain,
                 FontSize = 23,
                 FontWeight = FontWeights.Bold,
-                Margin = new Thickness(0, 4, 0, 0)
+                Margin = new Thickness(0, 4, 0, 0),
+                Padding = new Thickness(0, 0, 0, 2)
             };
             Grid.SetRow(_txtBalance, 1);
             Grid.SetColumnSpan(_txtBalance, 2);
@@ -108,20 +110,32 @@ namespace DeepSeekWidget {
             _txtBalanceDetail = new TextBlock {
                 Foreground = TextSub,
                 FontSize = 11,
-                Margin = new Thickness(0, 1, 0, 0),
+                Margin = new Thickness(0, 0, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             Grid.SetRow(_txtBalanceDetail, 2);
             Grid.SetColumnSpan(_txtBalanceDetail, 2);
             grid.Children.Add(_txtBalanceDetail);
 
-            _txtUsage = new TextBlock {
+            var usageTitle = new TextBlock {
+                Text = "今日用量",
                 Foreground = TextSub,
-                FontSize = 12,
-                Margin = new Thickness(0, 6, 0, 0),
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            Grid.SetRow(usageTitle, 3);
+            Grid.SetColumnSpan(usageTitle, 2);
+            grid.Children.Add(usageTitle);
+
+            _txtUsage = new TextBlock {
+                Foreground = TextMain,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 2, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            Grid.SetRow(_txtUsage, 3);
+            Grid.SetRow(_txtUsage, 4);
             Grid.SetColumnSpan(_txtUsage, 2);
             grid.Children.Add(_txtUsage);
 
@@ -131,7 +145,7 @@ namespace DeepSeekWidget {
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Bottom
             };
-            Grid.SetRow(_txtUpdated, 4);
+            Grid.SetRow(_txtUpdated, 5);
             Grid.SetColumnSpan(_txtUpdated, 2);
             grid.Children.Add(_txtUpdated);
 
@@ -296,11 +310,11 @@ namespace DeepSeekWidget {
             if (bal == null) bal = new BalanceInfo();
             if (bal.HasKey && string.IsNullOrEmpty(bal.Error)) {
                 _txtBalance.Text = Money(bal.Currency, bal.Total);
-                string detail = "充值 " + Money(bal.Currency, bal.ToppedUp) + " · 赠送 " + Money(bal.Currency, bal.Granted);
+                string detail = "充值 " + Money(bal.Currency, bal.ToppedUp);
                 if (!bal.IsAvailable) detail += "（余额不可用）";
                 _txtBalanceDetail.Text = detail;
             } else if (!bal.HasKey) {
-                _txtBalance.Text = "未配置 API Key";
+                _txtBalance.Text = "未登录";
                 _txtBalanceDetail.Text = "托盘右键 → 登录 DeepSeek 账号";
             } else {
                 _txtBalance.Text = "余额获取失败";
@@ -329,8 +343,10 @@ namespace DeepSeekWidget {
         }
 
         static string FormatTokens(long n) {
-            if (n >= 10000) return (n / 10000.0).ToString("0.0") + " 万 tokens";
-            return n.ToString("N0", CultureInfo.InvariantCulture) + " tokens";
+            if (n >= 1000000000) return (n / 1000000000.0).ToString("0.0", CultureInfo.InvariantCulture) + "B tokens";
+            if (n >= 1000000) return (n / 1000000.0).ToString("0.0", CultureInfo.InvariantCulture) + "M tokens";
+            if (n >= 1000) return (n / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "K tokens";
+            return n.ToString(CultureInfo.InvariantCulture) + " tokens";
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -16,8 +17,11 @@ namespace DeepSeekWidget {
         public event Action LoginRequested;
         public event Action ExitRequested;
         public event Action<bool> AutoStartChanged;
+        public event Action<int> RefreshIntervalChanged;
 
-        public TrayIcon() {
+        readonly List<Tuple<ToolStripMenuItem, int>> _refreshItems = new List<Tuple<ToolStripMenuItem, int>>();
+
+        public TrayIcon(int refreshSeconds) {
             using (var bmp = new Bitmap(32, 32)) {
                 _hIcon = DrawIcon(bmp);
             }
@@ -45,11 +49,32 @@ namespace DeepSeekWidget {
             var miLogin = new ToolStripMenuItem("登录 DeepSeek 账号…");
             miLogin.Click += (s, e) => { if (LoginRequested != null) LoginRequested(); };
 
+            // 刷新频率子菜单：30秒 / 1分钟 / 5分钟 / 10分钟
+            var miRefresh = new ToolStripMenuItem("刷新频率");
+            var opts = new[] {
+                new { Sec = 30, Label = "30 秒" },
+                new { Sec = 60, Label = "1 分钟" },
+                new { Sec = 300, Label = "5 分钟" },
+                new { Sec = 600, Label = "10 分钟" }
+            };
+            foreach (var o in opts) {
+                var mi = new ToolStripMenuItem(o.Label) { Checked = (refreshSeconds == o.Sec) };
+                int sec = o.Sec;
+                mi.Click += (s, e) => SelectRefresh(sec);
+                _refreshItems.Add(Tuple.Create(mi, sec));
+                miRefresh.DropDownItems.Add(mi);
+            }
+
             var miExit = new ToolStripMenuItem("退出");
             miExit.Click += (s, e) => { if (ExitRequested != null) ExitRequested(); };
 
-            _menu.Items.AddRange(new ToolStripItem[] { miMove, miReset, miAuto, miLogin, miExit });
+            _menu.Items.AddRange(new ToolStripItem[] { miMove, miReset, miAuto, miRefresh, miLogin, miExit });
             _notify.ContextMenuStrip = _menu;
+        }
+
+        void SelectRefresh(int sec) {
+            foreach (var t in _refreshItems) t.Item1.Checked = (t.Item2 == sec);
+            if (RefreshIntervalChanged != null) RefreshIntervalChanged(sec);
         }
 
         static IntPtr DrawIcon(Bitmap bmp) {

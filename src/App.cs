@@ -107,12 +107,20 @@ namespace DeepSeekWidget {
             Log.Write("配置已加载");
             _widget = new WidgetWindow(Config);
             Log.Write("组件窗口已创建");
-            _tray = new TrayIcon();
+            _tray = new TrayIcon(Config.RefreshSeconds);
             Log.Write("托盘已创建");
             _tray.MoveRequested += () => _widget.ToggleMoveMode();
             _tray.ResetPositionRequested += () => _widget.ResetPosition();
             _tray.LoginRequested += OpenLogin;
             _tray.AutoStartChanged += v => AutoStart.SetEnabled(v);
+            _tray.RefreshIntervalChanged += seconds => {
+                Config.RefreshSeconds = seconds;
+                Config.Save();
+                _refreshTimer.Interval = TimeSpan.FromSeconds(seconds);
+                _refreshTimer.Stop();
+                _refreshTimer.Start();
+                Log.Write("刷新频率改为 " + seconds + " 秒");
+            };
             _tray.ExitRequested += Shutdown;
 
             int sec = Math.Max(30, Config.RefreshSeconds);
@@ -145,10 +153,9 @@ namespace DeepSeekWidget {
             _refreshing = true;
             try {
                 _widget.ShowLoading();
-                string key = Config.ApiKeyPlain;
                 string token = Config.PlatformTokenPlain;
                 string cookie = Config.CookieHeaderPlain;
-                var bal = await ApiClient.FetchBalanceAsync(key);
+                var bal = await ApiClient.FetchPlatformBalanceAsync(token, cookie);
                 var usage = await ApiClient.FetchUsageAsync(token, cookie);
                 string balState = bal == null ? "null"
                     : (bal.Error.Length > 0 ? "失败(" + bal.Error + ")"
@@ -160,12 +167,13 @@ namespace DeepSeekWidget {
                 Log.Write("刷新完成: 余额=" + balState
                     + " 用量=" + usageState
                     + " 用量解析失败=" + (usage == null ? "null" : usage.ParseFailed.ToString())
-                    + " 登录过期=" + (usage == null ? "null" : usage.SessionExpired.ToString()));
+                    + " 登录过期=" + (usage == null ? "null" : usage.SessionExpired.ToString())
+                    + " tokens=" + (usage == null ? "null" : usage.TokensToday.ToString()));
                 _widget.UpdateData(bal, usage, DateTime.Now);
             } catch (Exception ex) {
                 Log.Write("刷新异常: " + ex);
                 var bal = new BalanceInfo {
-                    HasKey = !string.IsNullOrEmpty(Config.ApiKeyPlain),
+                    HasKey = !string.IsNullOrEmpty(Config.PlatformTokenPlain),
                     Error = ex.Message
                 };
                 _widget.UpdateData(bal, null, DateTime.Now);

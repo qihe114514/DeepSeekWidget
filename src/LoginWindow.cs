@@ -14,7 +14,6 @@ namespace DeepSeekWidget {
 
     public class LoginWindow : Window {
         readonly WebView2 _web = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.White };
-        readonly PasswordBox _pwd = new PasswordBox();
         readonly TextBlock _txtStatus = new TextBlock();
         readonly Button _btnSave;
         DispatcherTimer _poll;
@@ -64,8 +63,6 @@ namespace DeepSeekWidget {
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             FontFamily = new FontFamily("Microsoft YaHei UI");
 
-            _pwd.Password = App.Instance.Config.ApiKeyPlain ?? "";
-
             _btnSave = new Button {
                 Content = "保存登录态",
                 IsEnabled = false,
@@ -80,16 +77,10 @@ namespace DeepSeekWidget {
 
             var header = new StackPanel { Margin = new Thickness(14, 10, 14, 8) };
             header.Children.Add(new TextBlock {
-                Text = "1. 填写 API Key（用于查询余额，可在 platform.deepseek.com → API Keys 获取）",
+                Text = "在下方窗口中登录 platform.deepseek.com（或确认已有登录状态）",
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(0, 0, 0, 6),
                 TextWrapping = TextWrapping.Wrap
-            });
-            header.Children.Add(_pwd);
-            header.Children.Add(new TextBlock {
-                Text = "2. 在下方窗口中登录 platform.deepseek.com（或查看已有登录状态）",
-                FontWeight = FontWeights.Bold,
-                Margin = new Thickness(0, 10, 0, 6)
             });
             _txtStatus.Text = "正在加载登录页…";
             _txtStatus.Foreground = Brushes.Gray;
@@ -200,7 +191,6 @@ namespace DeepSeekWidget {
                     sb.Append(c.Name).Append('=').Append(c.Value).Append("; ");
                 }
                 var cfg = App.Instance.Config;
-                cfg.ApiKeyPlain = _pwd.Password.Trim();
                 cfg.PlatformTokenPlain = _token;
                 cfg.CookieHeaderPlain = sb.ToString();
                 cfg.Save();

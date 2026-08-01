@@ -58,8 +58,9 @@ namespace DeepSeekWidget {
             return client;
         }
 
-        public static async Task<BalanceInfo> FetchBalanceAsync(string apiKey) {
-            var info = new BalanceInfo { HasKey = !string.IsNullOrEmpty(apiKey) };
+        // 通过平台登录态获取余额（无需 API Key）：GET /api/v0/users/get_user_summary
+        public static async Task<BalanceInfo> FetchPlatformBalanceAsync(string token, string cookieHeader) {
+            var info = new BalanceInfo { HasKey = !string.IsNullOrEmpty(token) };
             if (!info.HasKey) return info;
             // 最多尝试 2 次，每次全新连接，应对偶发的连接/响应异常
             for (int attempt = 0; attempt < 2; attempt++) {
@@ -67,20 +68,23 @@ namespace DeepSeekWidget {
                 string error;
                 try {
                     using (var client = NewClient())
-                    using (var req = new HttpRequestMessage(HttpMethod.Get, "https://api.deepseek.com/user/balance")) {
-                        req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + apiKey);
-                        req.Headers.TryAddWithoutValidation("Accept", "application/json");
+                    using (var req = new HttpRequestMessage(HttpMethod.Get, "https://platform.deepseek.com/api/v0/users/get_user_summary")) {
+                        req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + token);
+                        req.Headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+                        if (!string.IsNullOrEmpty(cookieHeader)) {
+                            req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+                        }
                         using (var resp = await client.SendAsync(req).ConfigureAwait(false)) {
                             body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                             int status = (int)resp.StatusCode;
                             if (status == 401 || status == 403) {
-                                error = "API Key 无效或已过期，请重新登录";
+                                error = "平台登录已过期，请重新登录";
                             } else if (status == 429) {
                                 error = "请求过于频繁，请稍后再试";
                             } else if (!resp.IsSuccessStatusCode) {
                                 error = "HTTP " + status;
                             } else {
-                                error = ParseBalanceBody(body, info);
+                                error = ParseSummaryBody(body, info);
                                 if (error == null) return info; // 解析成功
                             }
                         }
@@ -95,17 +99,27 @@ namespace DeepSeekWidget {
             return info;
         }
 
-        // 解析 balance 响应；成功返回 null，失败返回错误描述
-        static string ParseBalanceBody(string body, BalanceInfo info) {
+        // 解析 get_user_summary：取 normal_wallets（充值余额），赠送余额不再展示
+        static string ParseSummaryBody(string body, BalanceInfo info) {
             var root = new JavaScriptSerializer().DeserializeObject(body) as Dictionary<string, object>;
             if (root == null) return "响应格式异常（原始响应已存调试目录）";
-            var pick = PickBalance(root);
+            var walletObj = FindObjectWithKeys(root, new[] { "normal_wallets" });
+            Dictionary<string, object> pick = null;
+            foreach (object o in AsArray(Get(walletObj, "normal_wallets"))) {
+                var d = o as Dictionary<string, object>;
+                if (d == null) continue;
+                if (pick == null) pick = d;
+                if (string.Equals(Str(d, "currency"), "CNY", StringComparison.OrdinalIgnoreCase)) {
+                    pick = d;
+                    break;
+                }
+            }
             if (pick == null) return "未找到余额数据（原始响应已存调试目录）";
-            info.IsAvailable = root.ContainsKey("is_available") ? IsTrue(root["is_available"]) : true;
             info.Currency = Str(pick, "currency") ?? "CNY";
-            info.Total = Dec(pick, "total_balance");
-            info.Granted = Dec(pick, "granted_balance");
-            info.ToppedUp = Dec(pick, "topped_up_balance");
+            info.Total = Dec(pick, "balance");
+            info.ToppedUp = info.Total;
+            info.Granted = 0;
+            info.IsAvailable = true;
             return null;
         }
 
@@ -141,20 +155,6 @@ namespace DeepSeekWidget {
                 File.WriteAllText(Path.Combine(dir, "balance_" + stamp + ".json"), body);
             } catch {
             }
-        }
-
-        static Dictionary<string, object> PickBalance(Dictionary<string, object> root) {
-            Dictionary<string, object> pick = null;
-            foreach (object o in AsArray(Get(root, "balance_infos"))) {
-                var d = o as Dictionary<string, object>;
-                if (d == null) continue;
-                if (pick == null) pick = d;
-                if (string.Equals(Str(d, "currency"), "CNY", StringComparison.OrdinalIgnoreCase)) {
-                    pick = d;
-                    break;
-                }
-            }
-            return pick;
         }
 
         public static async Task<UsageInfo> FetchUsageAsync(string token, string cookieHeader) {
@@ -385,38 +385,22 @@ namespace DeepSeekWidget {
         static long DayTokens(Dictionary<string, object> day) {
             long total = 0;
             foreach (object o in AsArray(Get(day, "data", "models", "usage", "usages"))) {
-                var id = o as Dictionary<string, object>;
-                if (id == null) continue;
-                total += TokensOf(UsageMap(AsArray(Get(id, "usage", "usages", "amounts", "values", "data"))));
+                var md = o as Dictionary<string, object>;
+                if (md == null) continue;
+                foreach (object u in AsArray(Get(md, "usage", "usages", "amounts", "values", "data"))) {
+                    var ud = u as Dictionary<string, object>;
+                    if (ud == null) continue;
+                    string type = Str(ud, "type", "usage_type", "usageType", "name", "key");
+                    if (type == null) continue;
+                    // 平台返回的 token 类型：PROMPT_TOKEN / PROMPT_CACHE_HIT_TOKEN /
+                    // PROMPT_CACHE_MISS_TOKEN / RESPONSE_TOKEN（REQUEST 是请求次数，不计入）
+                    if (type == "PROMPT_TOKEN" || type == "PROMPT_CACHE_HIT_TOKEN"
+                        || type == "PROMPT_CACHE_MISS_TOKEN" || type == "RESPONSE_TOKEN") {
+                        total += (long)Dec(ud, "amount", "value", "count", "total");
+                    }
+                }
             }
             return total;
-        }
-
-        static Dictionary<string, long> UsageMap(List<object> usage) {
-            var map = new Dictionary<string, long>();
-            foreach (object u in usage) {
-                var ud = u as Dictionary<string, object>;
-                if (ud == null) continue;
-                string type = Str(ud, "type", "usage_type", "usageType", "name", "key");
-                if (type == null) continue;
-                map[type] = (long)Dec(ud, "amount", "value", "count", "total");
-            }
-            return map;
-        }
-
-        static long TokensOf(Dictionary<string, long> map) {
-            long r = Val(map, "response", "output", "output_tokens")
-                + Val(map, "prompt_miss", "promptMiss", "prompt_cache_miss", "prompt_tokens_cache_miss")
-                + Val(map, "prompt_hit", "promptHit", "prompt_cache_hit", "prompt_tokens_cache_hit");
-            if (r > 0) return r;
-            return Val(map, "tokens", "token", "total");
-        }
-
-        static long Val(Dictionary<string, long> map, params string[] keys) {
-            foreach (string k in keys) {
-                if (map.ContainsKey(k)) return map[k];
-            }
-            return 0;
         }
 
         static bool IsToday(string s) {
