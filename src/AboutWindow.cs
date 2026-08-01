@@ -153,12 +153,15 @@ namespace DeepSeekWidget {
                 } else {
                     bmp = new BitmapImage(new Uri(file));
                 }
-                return new Image {
+                var img = new Image {
                     Source = bmp,
                     Width = 26,
                     Height = 26,
                     Stretch = Stretch.Uniform
                 };
+                // 圆角遮罩：方形图标（如抖音/B站 logo）在圆形按钮里更协调
+                img.Clip = new RectangleGeometry(new Rect(0, 0, 26, 26), 7, 7);
+                return img;
             } catch {
                 try { if (File.Exists(file)) File.Delete(file); } catch { }
                 return FallbackText(fallback);
