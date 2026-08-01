@@ -7,9 +7,11 @@ namespace DeepSeekWidget {
 
     /// <summary>
     /// iOS 风格 G3（连续曲率）圆角的卡片容器。
-    /// 普通 Border 的 CornerRadius 是圆弧圆角（曲率恒定，角部发"楞"）；
-    /// 这里用超椭圆 |x|^n + |y|^n = r^n（n = 5）近似 iOS 的连续曲率圆角
-    /// （squircle）：角部曲率从边缘的 0 平滑过渡到中间最大值，观感更圆润自然。
+    /// 普通 Border 的 CornerRadius 是圆弧圆角（曲率恒定，过渡偏"楞"）；
+    /// n=5 超椭圆在小半径下曲率过度集中（峰值达圆弧的 ~2.9 倍且挤在一小段），
+    /// 视觉上反而像"倒角"。
+    /// 本控件用曲率沿弧长按正弦分布（端点 0 → 中间峰值 ≈ 1.49/r）的曲线
+    /// 近似 iOS 连续曲率圆角：从直边平滑起弯、中间均匀转向，观感圆润自然。
     /// </summary>
     public class SquircleBorder : Border {
 
@@ -45,7 +47,7 @@ namespace DeepSeekWidget {
                 return;
             }
             _geometry = CreateSquircleGeometry(new Rect(0, 0, w, h), SquircleRadius);
-            // 裁剪子内容，让内部文字/按钮也严格落在超椭圆形状内
+            // 裁剪子内容，让内部文字/按钮也严格落在连续曲率形状内
             Clip = _geometry;
             InvalidateVisual();
         }
@@ -63,7 +65,7 @@ namespace DeepSeekWidget {
             dc.DrawGeometry(Background, pen, _geometry);
         }
 
-        // 矩形 + 四角超椭圆（n = 5）拼接成完整轮廓
+        // 矩形 + 四角连续曲率曲线拼接成完整轮廓
         static Geometry CreateSquircleGeometry(Rect rect, double radius) {
             double x0 = rect.Left, y0 = rect.Top, x1 = rect.Right, y1 = rect.Bottom;
             double r = Math.Max(0, Math.Min(radius, Math.Min(rect.Width / 2, rect.Height / 2)));
@@ -71,37 +73,62 @@ namespace DeepSeekWidget {
             var geo = new StreamGeometry();
             using (StreamGeometryContext ctx = geo.Open()) {
                 if (r < 0.5) {
-                    // 半径过小直接画矩形
                     ctx.BeginFigure(new Point(x0, y0), true, true);
                     ctx.LineTo(new Point(x1, y0), false, false);
                     ctx.LineTo(new Point(x1, y1), false, false);
                     ctx.LineTo(new Point(x0, y1), false, false);
                     return geo;
                 }
+                Point[] corner = CornerCurve(r, 100);
                 ctx.BeginFigure(new Point(x0 + r, y0), true, true);
                 ctx.LineTo(new Point(x1 - r, y0), false, false);   // 上边
-                AppendCorner(ctx, x1, y0, r, true, true, true);    // 右上：(x1-r,y0)→(x1,y0+r)
+                AppendCorner(ctx, corner, x1 - r, y0, true, true); // 右上
                 ctx.LineTo(new Point(x1, y1 - r), false, false);   // 右边
-                AppendCorner(ctx, x1, y1, r, true, false, false);  // 右下：(x1,y1-r)→(x1-r,y1)
+                AppendCorner(ctx, corner, x1, y1 - r, true, false);// 右下
                 ctx.LineTo(new Point(x0 + r, y1), false, false);   // 底边
-                AppendCorner(ctx, x0, y1, r, false, false, true);  // 左下：(x0+r,y1)→(x0,y1-r)
+                AppendCorner(ctx, corner, x0 + r, y1, false, false);// 左下
                 ctx.LineTo(new Point(x0, y0 + r), false, false);   // 左边
-                AppendCorner(ctx, x0, y0, r, false, true, false);  // 左上：(x0,y0+r)→(x0+r,y0)
+                AppendCorner(ctx, corner, x0, y0 + r, false, true);// 左上
                 return geo;
             }
         }
 
-        // 角部超椭圆曲线段：局部坐标 u^5 + v^5 = 1，u,v ∈ [0,1]，
-        // 实际点 x = cx ± u·r，y = cy ± v·r（right/top 决定角中心方位）。
-        // startAtU1=true 时从 u=1（靠角内）走到 u=0（贴直边），保证与前后直线段方向一致。
-        static void AppendCorner(StreamGeometryContext ctx, double cx, double cy, double r,
-                                 bool right, bool top, bool startAtU1) {
-            const int N = 20; // 每角采样段数，14px 半径下每段不足 1px，视觉平滑
-            for (int i = 0; i <= N; i++) {
-                double u = startAtU1 ? 1 - (double)i / N : (double)i / N;
-                double v = Math.Pow(1 - Math.Pow(u, 5), 0.2);
-                ctx.LineTo(new Point(right ? cx - u * r : cx + u * r,
-                                     top ? cy + v * r : cy - v * r), false, false);
+        // 曲率正弦分布的连续曲率圆角曲线。
+        // 局部坐标系：起点 (0,0)（切线沿 +x，即直边方向），终点 (r,r)（切线沿 +y）。
+        // κ(s) = κm·sin(πs/L)，总转角 ∫κ ds = π/2 → κm = π²/(4L)；
+        // 缩放后峰值曲率 ≈ 1.49/r（比圆弧更"鼓"一点，但曲率从 0 平滑过渡，不产生倒角感）。
+        static Point[] CornerCurve(double r, int N) {
+            double L = 1.0;
+            double kappa = Math.PI * Math.PI / (4 * L);
+            var pts = new Point[N + 1];
+            double x = 0, y = 0, theta = 0;
+            pts[0] = new Point(0, 0);
+            double ds = L / N;
+            for (int i = 1; i <= N; i++) {
+                double s = i * ds;
+                theta += kappa * Math.Sin(Math.PI * s / L) * ds;
+                x += Math.Cos(theta) * ds;
+                y += Math.Sin(theta) * ds;
+                pts[i] = new Point(x, y);
+            }
+            double k = r / x; // 曲线关于 45° 对称，终点 x == y
+            for (int i = 0; i <= N; i++) pts[i] = new Point(pts[i].X * k, pts[i].Y * k);
+            return pts;
+        }
+
+        // 将局部曲线点映射到对应角。corner 为 (0,0)→(r,r) 的曲线；
+        // 平移锚点 bx,by 为角部"起点"（贴直边端点），right/top 决定角中心方位。
+        static void AppendCorner(StreamGeometryContext ctx, Point[] corner, double bx, double by,
+                                 bool right, bool top) {
+            for (int i = 0; i < corner.Length; i++) {
+                double px = corner[i].X;
+                double py = corner[i].Y;
+                double x, y;
+                if (right && top) { x = bx + px; y = by + py; }        // 右上
+                else if (right) { x = bx - py; y = by + px; }          // 右下
+                else if (top) { x = bx + py; y = by - px; }            // 左上
+                else { x = bx - px; y = by - py; }                     // 左下
+                ctx.LineTo(new Point(x, y), false, false);
             }
         }
     }
