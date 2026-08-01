@@ -1,5 +1,7 @@
 ﻿# DeepSeek 余额小组件（Windows）
 
+![DeepSeek 余额小组件截图](assets/widget-screenshot.png)
+
 一个免安装的 Windows 桌面小工具：开机后常驻在桌面右上角，像一个手机小组件，实时显示你的 DeepSeek 余额和今日用量。卡片上只有一个可点击的「充值」按钮，其余区域点击都会穿透到桌面，完全不挡你操作桌面图标和文件。
 
 ## 怎么开始用
