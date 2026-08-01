@@ -22,9 +22,12 @@ namespace DeepSeekWidget {
         readonly Border _card;
         DispatcherTimer _bottomTimer;
         DispatcherTimer _moveTimer;
+        DispatcherTimer _clickTimer;
         HwndSource _source;
         bool _moveMode;
         bool _pinTop;
+        bool _clickThrough;
+        bool _btnHover;
 
         static readonly Brush BorderNormal = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
         static readonly Brush BorderMove = new SolidColorBrush(Color.FromArgb(255, 45, 127, 249));
@@ -92,8 +95,6 @@ namespace DeepSeekWidget {
                 Cursor = Cursors.Hand
             };
             _btnRecharge.Template = RoundButtonTemplate();
-            _btnRecharge.MouseEnter += (s, e) => _btnRecharge.Background = new SolidColorBrush(Color.FromRgb(70, 145, 255));
-            _btnRecharge.MouseLeave += (s, e) => _btnRecharge.Background = Accent;
             _btnRecharge.Click += (s, e) => App.Instance.OpenRecharge();
             Grid.SetRow(_btnRecharge, 0);
             Grid.SetColumn(_btnRecharge, 1);
@@ -182,11 +183,16 @@ namespace DeepSeekWidget {
                 _bottomTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
                 _bottomTimer.Tick += (t1, t2) => KeepBottomTick();
                 _bottomTimer.Start();
+                // 鼠标穿透轮询：默认整窗穿透（WS_EX_TRANSPARENT），鼠标在充值按钮上时临时取消穿透
+                _clickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+                _clickTimer.Tick += (t1, t2) => ClickThroughTick();
+                _clickTimer.Start();
             };
 
             Closed += (s, e) => {
                 if (_bottomTimer != null) _bottomTimer.Stop();
                 if (_moveTimer != null) _moveTimer.Stop();
+                if (_clickTimer != null) _clickTimer.Stop();
                 if (_source != null) _source.RemoveHook(WndProc);
             };
         }
@@ -320,6 +326,42 @@ namespace DeepSeekWidget {
             SetMoveMode(!_moveMode);
         }
 
+        // 用 WS_EX_TRANSPARENT 实现可靠的鼠标穿透（比 HTTRANSPARENT 更稳定，分层窗口下也有效）
+        void SetClickThrough(bool on) {
+            if (_clickThrough == on) return;
+            _clickThrough = on;
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            int ex = Win32.GetWindowLong(hwnd, Win32.GWL_EXSTYLE);
+            if (on) ex |= Win32.WS_EX_TRANSPARENT;
+            else ex &= ~Win32.WS_EX_TRANSPARENT;
+            Win32.SetWindowLong(hwnd, Win32.GWL_EXSTYLE, ex);
+        }
+
+        void ClickThroughTick() {
+            if (_source == null || _clickTimer == null) return;
+            // 移动模式下整窗可拖拽，必须取消穿透
+            bool overBtn = false;
+            try {
+                Win32.POINT p;
+                if (Win32.GetCursorPos(out p)) {
+                    overBtn = ButtonRect.Contains(PointFromScreen(new Point(p.X, p.Y)));
+                }
+            } catch {
+            }
+            bool prevThrough = _clickThrough;
+            SetClickThrough(!_moveMode && !overBtn);
+            if (_clickThrough != prevThrough) {
+                Log.Write("鼠标穿透: " + (_clickThrough ? "开启(整窗穿透)" : "关闭(按钮可点)"));
+            }
+            // 充值按钮 hover 效果（穿透时收不到 MouseEnter/Leave，用轮询模拟）
+            bool hover = !_moveMode && overBtn;
+            if (hover != _btnHover) {
+                _btnHover = hover;
+                _btnRecharge.Background = hover ? new SolidColorBrush(Color.FromRgb(70, 145, 255)) : Accent;
+            }
+        }
+
         void SetMoveMode(bool on) {
             if (_moveMode == on) return;
             _moveMode = on;
@@ -327,6 +369,7 @@ namespace DeepSeekWidget {
                 Cursor = Cursors.SizeAll;
                 _card.BorderBrush = BorderMove;
                 _card.BorderThickness = new Thickness(1.5);
+                SetClickThrough(false); // 移动模式必须可接收鼠标拖动
                 // 超时兜底：避免点了“移动位置”但没拖动时永久卡在移动模式（鼠标穿透失效）
                 if (_moveTimer == null) {
                     _moveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
@@ -341,6 +384,8 @@ namespace DeepSeekWidget {
                 _card.BorderBrush = BorderNormal;
                 _card.BorderThickness = new Thickness(1);
                 if (_moveTimer != null) _moveTimer.Stop();
+                // 退出移动模式：穿透由轮询自动恢复
+                ClickThroughTick();
             }
         }
 

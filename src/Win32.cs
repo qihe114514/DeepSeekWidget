@@ -7,6 +7,7 @@ namespace DeepSeekWidget {
         public const int GWL_EXSTYLE = -20;
         public const int WS_EX_NOACTIVATE = 0x08000000;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WS_EX_TRANSPARENT = 0x00000020;
         public const int WM_NCHITTEST = 0x0084;
         public const int WM_MOUSEACTIVATE = 0x0021;
         public const int WM_ENTERSIZEMOVE = 0x0231;
@@ -44,6 +45,15 @@ namespace DeepSeekWidget {
 
         [DllImport("user32.dll")]
         public static extern bool DestroyIcon(IntPtr hIcon);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetCursorPos(out POINT lpPoint);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        public struct POINT {
+            public int X;
+            public int Y;
+        }
 
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         public struct WINDOWPOS {
