@@ -61,22 +61,19 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $out = Join-Path $dist 'DeepSeekWidget.exe'
 
 # 复制图标资源（关于窗口使用）
-$iconSrc = Join-Path $root 'assets\icons'
-$iconDst = Join-Path $dist 'icons'
-if (Test-Path $iconSrc) {
-    New-Item -ItemType Directory -Force -Path $iconDst | Out-Null
-    Copy-Item (Join-Path $iconSrc '*') $iconDst -Force
-}
+# 已改为内嵌到 exe（见下方 /resource 参数），无需外部 icons 目录
 
 $resourcePairs = @(
     @((Join-Path $pkg 'lib\net462\Microsoft.Web.WebView2.Core.dll'), 'DeepSeekWidget.Bin.WebView2.Core.dll'),
     @((Join-Path $pkg 'lib\net462\Microsoft.Web.WebView2.Wpf.dll'), 'DeepSeekWidget.Bin.WebView2.Wpf.dll'),
     @((Join-Path $pkg 'runtimes\win-x64\native\WebView2Loader.dll'), 'DeepSeekWidget.Bin.WebView2Loader.x64.dll'),
-    @((Join-Path $pkg 'runtimes\win-x86\native\WebView2Loader.dll'), 'DeepSeekWidget.Bin.WebView2Loader.x86.dll')
+    @((Join-Path $pkg 'runtimes\win-x86\native\WebView2Loader.dll'), 'DeepSeekWidget.Bin.WebView2Loader.x86.dll'),
+    @((Join-Path $root 'assets\icons\bili.ico'), 'DeepSeekWidget.Bin.icons.bili.ico'),
+    @((Join-Path $root 'assets\icons\douyin.png'), 'DeepSeekWidget.Bin.icons.douyin.png')
 )
 $resArgs = @()
 foreach ($pair in $resourcePairs) {
-    if (-not (Test-Path $pair[0])) { throw '缺少 WebView2 SDK 文件：' + $pair[0] }
+    if (-not (Test-Path $pair[0])) { throw '缺少资源文件：' + $pair[0] }
     $resArgs += '/resource:' + $pair[0] + ',' + $pair[1]
 }
 

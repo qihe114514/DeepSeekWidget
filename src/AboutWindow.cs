@@ -11,7 +11,7 @@ using System.Windows.Media.Imaging;
 namespace DeepSeekWidget {
 
     public class AboutWindow : Window {
-        public const string Version = "v1.2.0";
+        public const string Version = "v1.2.4";
         const string Author = "@其核";
 
         const string UrlGithub = "https://github.com/qihe114514/DeepSeekWidget";
@@ -134,38 +134,69 @@ namespace DeepSeekWidget {
             }
         }
 
-        // 从 exe 目录 icons/ 读取图标；缺失则尝试下载；失败用首字母占位
+        // 加载 B站/抖音图标：优先读 exe 内嵌资源（单文件发布）；其次本地 icons/ 目录（旧版兼容）；
+        // 再尝试下载；全部失败用首字母占位
         static UIElement LoadIcon(string fileName, string url, string fallback) {
+            // 1) exe 内嵌资源
+            try {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                using (var stream = asm.GetManifestResourceStream("DeepSeekWidget.Bin.icons." + fileName)) {
+                    if (stream != null) return MakeIconImage(Decode(stream, fileName));
+                }
+            } catch {
+            }
+            // 2) 本地 icons/ 目录（旧版兼容）
             string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icons");
             string file = Path.Combine(dir, fileName);
             try {
-                if (!File.Exists(file)) {
-                    Directory.CreateDirectory(dir);
-                    using (var wc = new WebClient()) {
-                        wc.Headers.Add("User-Agent", "DeepSeekWidget/" + Version);
-                        wc.DownloadFile(url, file);
-                    }
+                if (File.Exists(file)) return MakeIconImage(Decode(new Uri(file), fileName));
+            } catch {
+            }
+            // 3) 尝试下载
+            try {
+                Directory.CreateDirectory(dir);
+                using (var wc = new WebClient()) {
+                    wc.Headers.Add("User-Agent", "DeepSeekWidget/" + Version);
+                    wc.DownloadFile(url, file);
                 }
-                BitmapSource bmp;
-                if (fileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)) {
-                    var dec = new IconBitmapDecoder(new Uri(file), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                    bmp = dec.Frames[dec.Frames.Count - 1]; // 取最大尺寸帧
-                } else {
-                    bmp = new BitmapImage(new Uri(file));
-                }
-                var img = new Image {
-                    Source = bmp,
-                    Width = 26,
-                    Height = 26,
-                    Stretch = Stretch.Uniform
-                };
-                // 圆角遮罩：方形图标（如抖音/B站 logo）在圆形按钮里更协调
-                img.Clip = new RectangleGeometry(new Rect(0, 0, 26, 26), 7, 7);
-                return img;
+                return MakeIconImage(Decode(new Uri(file), fileName));
             } catch {
                 try { if (File.Exists(file)) File.Delete(file); } catch { }
                 return FallbackText(fallback);
             }
+        }
+
+        static BitmapSource Decode(Stream stream, string fileName) {
+            if (fileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)) {
+                var dec = new IconBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                return dec.Frames[dec.Frames.Count - 1]; // 取最大尺寸帧
+            }
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = stream;
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.EndInit();
+            return bmp;
+        }
+
+        static BitmapSource Decode(Uri uri, string fileName) {
+            if (fileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)) {
+                var dec = new IconBitmapDecoder(uri, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                return dec.Frames[dec.Frames.Count - 1]; // 取最大尺寸帧
+            }
+            return new BitmapImage(uri);
+        }
+
+        static UIElement MakeIconImage(BitmapSource bmp) {
+            var img = new Image {
+                Source = bmp,
+                Width = 26,
+                Height = 26,
+                Stretch = Stretch.Uniform
+            };
+            // 圆角遮罩：方形图标（如抖音/B站 logo）在圆形按钮里更协调
+            img.Clip = new RectangleGeometry(new Rect(0, 0, 26, 26), 7, 7);
+            return img;
         }
 
         static UIElement FallbackText(string letter) {
