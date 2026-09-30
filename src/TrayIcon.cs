@@ -1,16 +1,28 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Windows.Forms;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Xaml.Controls;
 
 namespace DeepSeekWidget {
 
     public class TrayIcon : IDisposable {
-        readonly NotifyIcon _notify;
-        readonly ContextMenuStrip _menu;
-        readonly Icon _icon;
+        const uint NIM_ADD = 0;
+        const uint NIM_MODIFY = 1;
+        const uint NIM_DELETE = 2;
+        const uint NIF_MESSAGE = 1;
+        const uint NIF_ICON = 2;
+        const uint NIF_TIP = 4;
+        const uint NIF_INFO = 0x10;
+        const uint NIIF_INFO = 1;
+        const int WM_LBUTTONUP = 0x0202;
+        const int WM_RBUTTONUP = 0x0205;
+        const uint TrayMessage = Win32.WM_APP + 101;
+        const uint IconId = 1;
+
+        readonly NativeWindowHost _window;
+        readonly WinUI3Menu _menu;
         readonly IntPtr _hIcon;
+        readonly bool _ownsIcon;
 
         public event Action MoveRequested;
         public event Action ResetPositionRequested;
@@ -18,135 +30,217 @@ namespace DeepSeekWidget {
         public event Action ExitRequested;
         public event Action<bool> AutoStartChanged;
         public event Action<int> RefreshIntervalChanged;
+        public event Action<int> CacheHitWindowChanged;
         public event Action<bool> PinModeChanged;
+        public event Action<ThemePreference> ThemeChanged;
         public event Action AboutRequested;
+        public event Action AppearanceRequested;
+        public event Action RefreshRequested;
 
-        readonly List<Tuple<ToolStripMenuItem, int>> _refreshItems = new List<Tuple<ToolStripMenuItem, int>>();
-        readonly ToolStripMenuItem _miPinTop;
-        readonly ToolStripMenuItem _miPinBottom;
+        readonly Dictionary<int, MenuFlyoutItem> _refreshItems = new Dictionary<int, MenuFlyoutItem>();
+        readonly Dictionary<int, MenuFlyoutItem> _cacheWindowItems = new Dictionary<int, MenuFlyoutItem>();
+        readonly Dictionary<ThemePreference, MenuFlyoutItem> _themeItems = new Dictionary<ThemePreference, MenuFlyoutItem>();
+        MenuFlyoutItem _miPinTop;
+        MenuFlyoutItem _miPinBottom;
+        MenuFlyoutItem _miAuto;
 
-        public TrayIcon(int refreshSeconds, bool pinTop) {
-            using (var bmp = new Bitmap(32, 32)) {
-                _hIcon = DrawIcon(bmp);
+        public TrayIcon(int refreshSeconds, bool pinTop, int cacheWindowMinutes, ThemePreference theme) {
+            IntPtr large;
+            Win32.ExtractIconEx(Environment.ProcessPath, 0, out large, out _hIcon, 1);
+            _ownsIcon = _hIcon != IntPtr.Zero;
+            if (_hIcon == IntPtr.Zero) _hIcon = large;
+            if (large != IntPtr.Zero && large != _hIcon) Win32.DestroyIcon(large);
+
+            _window = new NativeWindowHost("DeepSeekWidgetTray", unchecked((uint)Win32.WS_OVERLAPPED), 0,
+                0, 0, OnNativeMessage);
+            var data = CreateIconData("DeepSeek 余额小组件");
+            data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+            data.uCallbackMessage = TrayMessage;
+            if (!Win32.Shell_NotifyIcon(NIM_ADD, ref data)) {
+                Log.Write("Shell_NotifyIcon 添加失败: " + Marshal.GetLastWin32Error());
             }
-            _icon = Icon.FromHandle(_hIcon);
-            _notify = new NotifyIcon {
-                Icon = _icon,
-                Text = "DeepSeek 余额小组件",
-                Visible = true
-            };
 
-            _menu = new ContextMenuStrip();
-            var miMove = new ToolStripMenuItem("移动位置");
-            miMove.Click += (s, e) => { if (MoveRequested != null) MoveRequested(); };
+            _menu = new WinUI3Menu();
+            _menu.Command += OnCommand;
+            _menu.Add("refresh", "立即刷新", "\uE72C");
 
-            var miReset = new ToolStripMenuItem("重置位置");
-            miReset.Click += (s, e) => { if (ResetPositionRequested != null) ResetPositionRequested(); };
+            var position = _menu.AddSub("位置", "\uE707");
+            _menu.AddTo(position, "move", "移动位置", "\uE7C2");
+            _menu.AddTo(position, "reset", "重置位置", "\uE7A7");
 
-            // 位置子菜单：移动位置 / 重置位置
-            var miPosition = new ToolStripMenuItem("位置");
-            miPosition.DropDownItems.Add(miMove);
-            miPosition.DropDownItems.Add(miReset);
+            var layer = _menu.AddSub("窗口层级", "\uE81E");
+            _miPinTop = _menu.AddTo(layer, "pin-top", "窗口置顶", "\uE81E");
+            _miPinBottom = _menu.AddTo(layer, "pin-bottom", "窗口置底", "\uE81E");
 
-            var miAuto = new ToolStripMenuItem("开机自启动") { Checked = AutoStart.IsEnabled() };
-            miAuto.Click += (s, e) => {
-                bool v = !miAuto.Checked;
-                miAuto.Checked = v;
-                if (AutoStartChanged != null) AutoStartChanged(v);
-            };
-
-            // 窗口层级子菜单：置顶 / 置底（互斥勾选，默认置底）
-            _miPinTop = new ToolStripMenuItem("窗口置顶") { Checked = pinTop };
-            _miPinTop.Click += (s, e) => SelectPin(true);
-            _miPinBottom = new ToolStripMenuItem("窗口置底") { Checked = !pinTop };
-            _miPinBottom.Click += (s, e) => SelectPin(false);
-            var miLayer = new ToolStripMenuItem("窗口层级");
-            miLayer.DropDownItems.Add(_miPinTop);
-            miLayer.DropDownItems.Add(_miPinBottom);
-
-            var miLogin = new ToolStripMenuItem("登录 DeepSeek 账号…");
-            miLogin.Click += (s, e) => { if (LoginRequested != null) LoginRequested(); };
-
-            // 刷新频率子菜单：30秒 / 1分钟 / 5分钟 / 10分钟
-            var miRefresh = new ToolStripMenuItem("刷新频率");
+            var refresh = _menu.AddSub("刷新频率", "\uE916");
             var opts = new[] {
                 new { Sec = 30, Label = "30 秒" },
                 new { Sec = 60, Label = "1 分钟" },
+                new { Sec = 120, Label = "2 分钟" },
                 new { Sec = 300, Label = "5 分钟" },
                 new { Sec = 600, Label = "10 分钟" }
             };
-            foreach (var o in opts) {
-                var mi = new ToolStripMenuItem(o.Label) { Checked = (refreshSeconds == o.Sec) };
-                int sec = o.Sec;
-                mi.Click += (s, e) => SelectRefresh(sec);
-                _refreshItems.Add(Tuple.Create(mi, sec));
-                miRefresh.DropDownItems.Add(mi);
+            foreach (var option in opts) {
+                _refreshItems[option.Sec] = _menu.AddTo(refresh, "refresh:" + option.Sec, option.Label, "\uE916");
             }
 
-            var miAbout = new ToolStripMenuItem("关于");
-            miAbout.Click += (s, e) => { if (AboutRequested != null) AboutRequested(); };
+            var cacheWindow = _menu.AddSub("缓存命中率窗口", "\uE916");
+            _cacheWindowItems[5] = _menu.AddTo(cacheWindow, "cache-window:5", "近 5 分钟", "\uE916");
+            _cacheWindowItems[10] = _menu.AddTo(cacheWindow, "cache-window:10", "近 10 分钟", "\uE916");
 
-            var miExit = new ToolStripMenuItem("退出");
-            miExit.Click += (s, e) => { if (ExitRequested != null) ExitRequested(); };
+            var themes = _menu.AddSub("主题", "\uE790");
+            _themeItems[ThemePreference.System] = _menu.AddTo(themes, "theme:system", "跟随系统", "\uE770");
+            _themeItems[ThemePreference.Light] = _menu.AddTo(themes, "theme:light", "浅色", "\uE706");
+            _themeItems[ThemePreference.Dark] = _menu.AddTo(themes, "theme:dark", "深色", "\uE708");
 
-            _menu.Items.AddRange(new ToolStripItem[] { miPosition, miLayer, miRefresh, miAuto, miLogin, miAbout, miExit });
-            _notify.ContextMenuStrip = _menu;
+            _menu.Add("appearance", "外观设置…", "\uE790");
+            _miAuto = _menu.Add("autostart", "开机自启动", "\uE945");
+            _menu.Add("login", "登录 DeepSeek 账号…", "\uE77B");
+            _menu.Add("about", "关于", "\uE946");
+            _menu.AddSeparator();
+            _menu.Add("exit", "退出", "\uE8BB");
+
+            SelectPin(pinTop);
+            SelectRefresh(refreshSeconds);
+            SelectCacheWindow(cacheWindowMinutes);
+            SelectTheme(theme, false);
+            UpdateAutoIcon(AutoStart.IsEnabled());
+        }
+
+        void OnNativeMessage(uint message, IntPtr wParam, IntPtr lParam) {
+            if (message != TrayMessage) return;
+            int mouseMessage = unchecked((int)(lParam.ToInt64() & 0xFFFF));
+            if (mouseMessage == WM_RBUTTONUP) ShowMenu();
+            else if (mouseMessage == WM_LBUTTONUP && RefreshRequested != null) RefreshRequested();
+        }
+
+        void ShowMenu() {
+            Win32.POINT point;
+            if (!Win32.GetCursorPos(out point)) return;
+            _menu.Show(new Windows.Graphics.PointInt32(point.X, point.Y));
+        }
+
+        public void ShowMenuAt(int x, int y) {
+            _menu.Show(new Windows.Graphics.PointInt32(x, y));
+        }
+
+        void OnCommand(string id) {
+            switch (id) {
+                case "refresh":
+                    if (RefreshRequested != null) RefreshRequested();
+                    break;
+                case "move":
+                    if (MoveRequested != null) MoveRequested();
+                    break;
+                case "reset":
+                    if (ResetPositionRequested != null) ResetPositionRequested();
+                    break;
+                case "pin-top":
+                    SelectPin(true);
+                    break;
+                case "pin-bottom":
+                    SelectPin(false);
+                    break;
+                case "appearance":
+                    if (AppearanceRequested != null) AppearanceRequested();
+                    break;
+                case "autostart": {
+                    bool enabled = !AutoStart.IsEnabled();
+                    UpdateAutoIcon(enabled);
+                    if (AutoStartChanged != null) AutoStartChanged(enabled);
+                    break;
+                }
+                case "login":
+                    if (LoginRequested != null) LoginRequested();
+                    break;
+                case "about":
+                    if (AboutRequested != null) AboutRequested();
+                    break;
+                case "exit":
+                    if (ExitRequested != null) ExitRequested();
+                    break;
+                default:
+                    if (id.StartsWith("refresh:", StringComparison.Ordinal)) {
+                        int seconds;
+                        if (int.TryParse(id.Substring("refresh:".Length), out seconds)) SelectRefresh(seconds);
+                    } else if (id.StartsWith("cache-window:", StringComparison.Ordinal)) {
+                        int minutes;
+                        if (int.TryParse(id.Substring("cache-window:".Length), out minutes)) SelectCacheWindow(minutes);
+                    } else if (id.StartsWith("theme:", StringComparison.Ordinal)) {
+                        SelectTheme(ThemePreferenceValues.Parse(id.Substring("theme:".Length)), true);
+                    }
+                    break;
+            }
+        }
+
+        public void ShowBalloon(string title, string text) {
+            try {
+                var data = CreateIconData("DeepSeek 余额小组件");
+                data.uFlags = NIF_INFO;
+                data.szInfoTitle = title ?? "";
+                data.szInfo = text ?? "";
+                data.dwInfoFlags = NIIF_INFO;
+                data.uTimeoutOrVersion = 5000;
+                Win32.Shell_NotifyIcon(NIM_MODIFY, ref data);
+            } catch { }
         }
 
         void SelectPin(bool top) {
-            _miPinTop.Checked = top;
-            _miPinBottom.Checked = !top;
+            WinUI3Menu.SetGlyph(_miPinTop, top ? "\uE73E" : "\uE81E");
+            WinUI3Menu.SetGlyph(_miPinBottom, top ? "\uE81E" : "\uE73E");
             if (PinModeChanged != null) PinModeChanged(top);
         }
 
-        void SelectRefresh(int sec) {
-            foreach (var t in _refreshItems) t.Item1.Checked = (t.Item2 == sec);
-            if (RefreshIntervalChanged != null) RefreshIntervalChanged(sec);
-        }
-
-        static IntPtr DrawIcon(Bitmap bmp) {
-            using (var g = Graphics.FromImage(bmp)) {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
-                using (var path = RoundedRect(new Rectangle(1, 1, 30, 30), 8)) {
-                    using (var fill = new SolidBrush(Color.FromArgb(255, 38, 44, 60))) {
-                        g.FillPath(fill, path);
-                    }
-                    using (var pen = new Pen(Color.FromArgb(255, 45, 127, 249), 2f)) {
-                        g.DrawPath(pen, path);
-                    }
-                }
-                using (var font = new Font("Microsoft YaHei", 14f, FontStyle.Bold, GraphicsUnit.Pixel))
-                using (var sf = new StringFormat {
-                    Alignment = StringAlignment.Center,
-                    LineAlignment = StringAlignment.Center
-                })
-                using (var brush = new SolidBrush(Color.White)) {
-                    g.DrawString("¥", font, brush, new RectangleF(0, 0, 32, 32), sf);
-                }
+        void SelectRefresh(int seconds) {
+            foreach (var item in _refreshItems) {
+                WinUI3Menu.SetGlyph(item.Value, item.Key == seconds ? "\uE73E" : "\uE916");
             }
-            return bmp.GetHicon();
+            if (RefreshIntervalChanged != null) RefreshIntervalChanged(seconds);
         }
 
-        static GraphicsPath RoundedRect(Rectangle r, int radius) {
-            var p = new GraphicsPath();
-            int d = radius * 2;
-            p.AddArc(r.X, r.Y, d, d, 180, 90);
-            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-            p.CloseFigure();
-            return p;
+        void SelectCacheWindow(int minutes) {
+            if (minutes != 5 && minutes != 10) minutes = 5;
+            foreach (var item in _cacheWindowItems) {
+                WinUI3Menu.SetGlyph(item.Value, item.Key == minutes ? "\uE73E" : "\uE916");
+            }
+            if (CacheHitWindowChanged != null) CacheHitWindowChanged(minutes);
+        }
+
+        void SelectTheme(ThemePreference preference, bool raiseEvent) {
+            foreach (var item in _themeItems) {
+                WinUI3Menu.SetGlyph(item.Value, item.Key == preference ? "\uE73E" : "\uE770");
+            }
+            if (raiseEvent && ThemeChanged != null) ThemeChanged(preference);
+        }
+
+        public void SetTheme(ThemePreference preference) {
+            SelectTheme(preference, false);
+        }
+
+        void UpdateAutoIcon(bool enabled) {
+            WinUI3Menu.SetGlyph(_miAuto, enabled ? "\uE73E" : "\uE945");
+        }
+
+        Win32.NOTIFYICONDATA CreateIconData(string tip) {
+            return new Win32.NOTIFYICONDATA {
+                cbSize = Marshal.SizeOf(typeof(Win32.NOTIFYICONDATA)),
+                hWnd = _window.Handle,
+                uID = IconId,
+                hIcon = _hIcon,
+                szTip = tip ?? "",
+                szInfo = "",
+                szInfoTitle = ""
+            };
         }
 
         public void Dispose() {
-            if (_notify != null) {
-                _notify.Visible = false;
-                _notify.Dispose();
-            }
+            try {
+                var data = CreateIconData("DeepSeek 余额小组件");
+                Win32.Shell_NotifyIcon(NIM_DELETE, ref data);
+            } catch { }
             if (_menu != null) _menu.Dispose();
-            if (_icon != null) _icon.Dispose();
-            if (_hIcon != IntPtr.Zero) Win32.DestroyIcon(_hIcon);
+            if (_window != null) _window.Dispose();
+            if (_ownsIcon && _hIcon != IntPtr.Zero) Win32.DestroyIcon(_hIcon);
         }
     }
 }

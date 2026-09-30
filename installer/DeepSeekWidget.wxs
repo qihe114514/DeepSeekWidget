@@ -1,0 +1,71 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Id="DeepSeekWidget"
+           Name="DeepSeek 余额小组件"
+           Manufacturer="DeepSeekWidget"
+           Version="1.5.0"
+           UpgradeCode="57390486-F16D-4965-B668-71F6B10D6E47"
+           Scope="perMachine"
+           Codepage="65001">
+
+    <MajorUpgrade DowngradeErrorMessage="已经安装了更新版本的 DeepSeek 余额小组件。" />
+    <Icon Id="AppIcon" SourceFile="assets\installer.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="STARTMENU_SHORTCUT" Value="1" />
+    <Property Id="DESKTOP_SHORTCUT" Value="0" />
+    <Property Id="AUTOSTART" Value="0" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="DeepSeekWidget">
+        <Files Include="!(bindpath.publish)**" />
+        <Component Id="AutoStartComponent" Guid="D76C6714-E1EA-46DF-BA03-3C4295C790B3" Condition="AUTOSTART = 1">
+          <RegistryValue Root="HKCU"
+                         Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                         Name="DeepSeekWidget"
+                         Type="string"
+                         Value="&quot;[INSTALLFOLDER]DeepSeekWidget.exe&quot;"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="DeepSeek 余额小组件">
+        <Component Id="ApplicationShortcut" Guid="99C7D056-EB4A-4BCC-B646-18EE878F7F6C" Condition="STARTMENU_SHORTCUT = 1">
+          <Shortcut Id="StartMenuShortcut"
+                    Name="DeepSeek 余额小组件"
+                    Description="DeepSeek 余额与用量桌面小组件"
+                    Target="[INSTALLFOLDER]DeepSeekWidget.exe"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AppIcon" />
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU"
+                         Key="Software\DeepSeekWidget"
+                         Name="Installed"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcutComponent" Guid="88DD5893-96F9-45EA-9D94-BC79439A64AD" Condition="DESKTOP_SHORTCUT = 1">
+        <Shortcut Id="DesktopShortcut"
+                  Name="DeepSeek 余额小组件"
+                  Description="DeepSeek 余额与用量桌面小组件"
+                  Target="[INSTALLFOLDER]DeepSeekWidget.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\DeepSeekWidget"
+                       Name="DesktopShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Package>
+</Wix>
+
+

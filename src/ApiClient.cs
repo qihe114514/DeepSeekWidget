@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 
 namespace DeepSeekWidget {
 
@@ -21,15 +20,24 @@ namespace DeepSeekWidget {
         public string Error = "";
     }
 
+    public class DayStat {
+        public DateTime Date;
+        public decimal Cost;
+    }
+
     public class UsageInfo {
         public bool HasSession;
         public bool SessionExpired;
         public bool ParseFailed;
         public decimal CostToday;
         public long TokensToday;
+        public long CacheHitTokensToday;
+        public long CacheMissTokensToday;
+        public bool HasTokenBreakdown;
         public string RawCost = "";
         public string RawAmount = "";
         public string Error = "";
+        public readonly List<DayStat> Daily = new List<DayStat>();
     }
 
     public static class ApiClient {
@@ -37,12 +45,20 @@ namespace DeepSeekWidget {
         static ApiClient() {
             // 无 app.config 的 .NET Framework 程序默认 SecurityProtocol 仅 Ssl3|Tls（不含 TLS 1.2），
             // 而 platform.deepseek.com 的 WAF 只接受 TLS 1.2+，会导致"未能创建 SSL/TLS 安全通道"。
-            // 这里显式启用 TLS 1.2/1.1/1.0，兼容所有接口。
+            // 优先启用 TLS 1.2/1.3；旧运行时（<4.8）不支持 Tls13 时回退到仅 TLS 1.2。
             try {
-                ServicePointManager.SecurityProtocol =
-                    SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+                ServicePointManager.SecurityProtocol = (SecurityProtocolType)(3072 | 12288);
             } catch {
+                try { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; } catch { }
             }
+        }
+
+        // 校验登录凭据是否可用；返回 null 表示有效，否则返回错误说明
+        public static async Task<string> ValidateTokenAsync(string token, string cookieHeader) {
+            if (string.IsNullOrEmpty(token)) return "未获取到登录凭据";
+            var bal = await FetchPlatformBalanceAsync(token, cookieHeader).ConfigureAwait(false);
+            if (bal != null && bal.HasKey && bal.Error.Length == 0) return null;
+            return bal == null || bal.Error.Length == 0 ? "验证失败" : bal.Error;
         }
 
         // 每次请求使用全新 HttpClient（全新连接），避免长期运行后连接池被污染
@@ -65,6 +81,7 @@ namespace DeepSeekWidget {
             // 最多尝试 2 次，每次全新连接，应对偶发的连接/响应异常
             for (int attempt = 0; attempt < 2; attempt++) {
                 string body = null;
+                int status = 0;
                 string error;
                 try {
                     using (var client = NewClient())
@@ -76,7 +93,7 @@ namespace DeepSeekWidget {
                         }
                         using (var resp = await client.SendAsync(req).ConfigureAwait(false)) {
                             body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                            int status = (int)resp.StatusCode;
+                            status = (int)resp.StatusCode;
                             if (status == 401 || status == 403) {
                                 error = "平台登录已过期，请重新登录";
                             } else if (status == 429) {
@@ -93,7 +110,8 @@ namespace DeepSeekWidget {
                     error = FriendlyNetworkError(ex);
                     body = null;
                 }
-                if (attempt == 0 && body != null) DumpBalance(body); // 首次失败保存原始响应，便于排查
+                // 仅在 200 但结构无法解析时保存原始响应；登录过期等不落盘，避免泄漏凭据相关响应
+                if (attempt == 0 && status == 200 && body != null) DumpBalance(body);
                 info.Error = error;
             }
             return info;
@@ -101,7 +119,7 @@ namespace DeepSeekWidget {
 
         // 解析 get_user_summary：取 normal_wallets（充值余额），赠送余额不再展示
         static string ParseSummaryBody(string body, BalanceInfo info) {
-            var root = new JavaScriptSerializer().DeserializeObject(body) as Dictionary<string, object>;
+            var root = Json.Parse(body) as Dictionary<string, object>;
             if (root == null) return "响应格式异常（原始响应已存调试目录）";
             var walletObj = FindObjectWithKeys(root, new[] { "normal_wallets" });
             Dictionary<string, object> pick = null;
@@ -227,10 +245,11 @@ namespace DeepSeekWidget {
                     foreach (object o in AsArray(Get(costData, "days", "daily", "daily_cost", "dailyCost"))) {
                         var d = o as Dictionary<string, object>;
                         if (d == null) continue;
-                        if (IsToday(Str(d, "date", "day"))) {
-                            info.CostToday = DayCost(d);
-                            break;
-                        }
+                        string rawDay = Str(d, "date", "day");
+                        decimal cost = DayCost(d);
+                        DateTime? day = ParseDay(rawDay);
+                        if (day.HasValue) info.Daily.Add(new DayStat { Date = day.Value, Cost = cost });
+                        if (IsToday(rawDay)) info.CostToday = cost;
                     }
                 }
 
@@ -240,7 +259,11 @@ namespace DeepSeekWidget {
                         var d = o as Dictionary<string, object>;
                         if (d == null) continue;
                         if (IsToday(Str(d, "date", "day"))) {
-                            info.TokensToday = DayTokens(d);
+                            TokenBreakdown tokens = DayTokenBreakdown(d);
+                            info.TokensToday = tokens.Total;
+                            info.CacheHitTokensToday = tokens.CacheHit;
+                            info.CacheMissTokensToday = tokens.CacheMiss;
+                            info.HasTokenBreakdown = tokens.HasCacheBreakdown;
                             break;
                         }
                     }
@@ -295,7 +318,7 @@ namespace DeepSeekWidget {
         }
 
         static object ParseJson(string body) {
-            object root = new JavaScriptSerializer().DeserializeObject(body);
+            object root = Json.Parse(body);
             if (root == null) throw new InvalidOperationException("接口返回空内容");
             return root;
         }
@@ -382,8 +405,15 @@ namespace DeepSeekWidget {
             return v;
         }
 
-        static long DayTokens(Dictionary<string, object> day) {
-            long total = 0;
+        sealed class TokenBreakdown {
+            public long Total;
+            public long CacheHit;
+            public long CacheMiss;
+            public bool HasCacheBreakdown;
+        }
+
+        static TokenBreakdown DayTokenBreakdown(Dictionary<string, object> day) {
+            var result = new TokenBreakdown();
             foreach (object o in AsArray(Get(day, "data", "models", "usage", "usages"))) {
                 var md = o as Dictionary<string, object>;
                 if (md == null) continue;
@@ -392,35 +422,49 @@ namespace DeepSeekWidget {
                     if (ud == null) continue;
                     string type = Str(ud, "type", "usage_type", "usageType", "name", "key");
                     if (type == null) continue;
+                    long amount = (long)Dec(ud, "amount", "value", "count", "total");
                     // 平台返回的 token 类型：PROMPT_TOKEN / PROMPT_CACHE_HIT_TOKEN /
                     // PROMPT_CACHE_MISS_TOKEN / RESPONSE_TOKEN（REQUEST 是请求次数，不计入）
                     if (type == "PROMPT_TOKEN" || type == "PROMPT_CACHE_HIT_TOKEN"
                         || type == "PROMPT_CACHE_MISS_TOKEN" || type == "RESPONSE_TOKEN") {
-                        total += (long)Dec(ud, "amount", "value", "count", "total");
+                        result.Total += amount;
+                    }
+                    if (type == "PROMPT_CACHE_HIT_TOKEN") {
+                        result.CacheHit += amount;
+                        result.HasCacheBreakdown = true;
+                    } else if (type == "PROMPT_CACHE_MISS_TOKEN") {
+                        result.CacheMiss += amount;
+                        result.HasCacheBreakdown = true;
                     }
                 }
             }
-            return total;
+            return result;
         }
 
-        static bool IsToday(string s) {
-            if (string.IsNullOrWhiteSpace(s)) return false;
+        static DateTime? ParseDay(string s) {
+            if (string.IsNullOrWhiteSpace(s)) return null;
             s = s.Trim();
             int ti = s.IndexOf('T');
             if (ti > 0) s = s.Substring(0, ti);
-            DateTime now = DateTime.Now;
-            DateTime utc = DateTime.UtcNow;
-            string[] forms = {
-                now.ToString("yyyy-MM-dd"), now.ToString("yyyy-M-d"),
-                utc.ToString("yyyy-MM-dd"), utc.ToString("yyyy-M-d"),
-                now.ToString("MM-dd"), now.ToString("M-d"),
-                utc.ToString("MM-dd"), utc.ToString("M-d"),
-                now.Day.ToString(CultureInfo.InvariantCulture)
+            string[] formats = {
+                "yyyy-MM-dd", "yyyy-M-d", "yyyy/MM/dd", "yyyy/M/d",
+                "MM-dd", "M-d", "MM/dd", "M/d"
             };
-            foreach (string f in forms) {
-                if (string.Equals(f, s, StringComparison.OrdinalIgnoreCase)) return true;
+            DateTime d;
+            if (DateTime.TryParseExact(s, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out d)) {
+                if (d.Year == 1) {
+                    DateTime now = DateTime.Now;
+                    d = new DateTime(now.Year, d.Month, d.Day);
+                }
+                return d.Date;
             }
-            return false;
+            return null;
+        }
+
+        static bool IsToday(string s) {
+            DateTime? d = ParseDay(s);
+            if (!d.HasValue) return false;
+            return d.Value == DateTime.Now.Date || d.Value == DateTime.UtcNow.Date;
         }
 
         static object Get(object o, params string[] keys) {
@@ -458,12 +502,6 @@ namespace DeepSeekWidget {
             }
         }
 
-        static bool IsTrue(object v) {
-            if (v is bool) return (bool)v;
-            if (v is string) return string.Equals((string)v, "true", StringComparison.OrdinalIgnoreCase);
-            return false;
-        }
-
         static void DumpDebug(UsageInfo info) {
             try {
                 string dir = Path.Combine(
@@ -479,3 +517,4 @@ namespace DeepSeekWidget {
         }
     }
 }
+

@@ -1,0 +1,13 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <PropertyGroup>
+    <OutputName>DeepSeekWidget-1.5.0-x64</OutputName>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <SuppressIces>ICE03</SuppressIces>
+  </PropertyGroup>
+  <ItemGroup>
+    <BindPath Include="$(MSBuildProjectDirectory)\publish">
+      <BindName>publish</BindName>
+    </BindPath>
+  </ItemGroup>
+</Project>

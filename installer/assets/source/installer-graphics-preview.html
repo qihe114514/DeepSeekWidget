@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeepSeek Widget Installer Graphics Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px; background: #e8edf4; color: #172033; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  p { margin: 0 0 24px; color: #526079; }
+  .card { width: 541px; margin-bottom: 24px; padding: 24px; border-radius: 14px; background: #fff; box-shadow: 0 10px 28px rgba(25, 42, 70, .12); }
+  .card h2 { margin: 0 0 14px; font-size: 15px; }
+  .banner-preview { position: relative; width: 493px; height: 58px; overflow: hidden; border-radius: 1px; }
+  .banner-preview img { display: block; width: 493px; height: 58px; }
+  .dynamic-title { position: absolute; left: 20px; top: 6px; color: #fff; font-size: 12px; line-height: 18px; font-weight: 700; }
+  .dialog-preview { display: block; width: 493px; height: 312px; }
+</style>
+</head>
+<body>
+  <h1>安装器图片预览</h1>
+  <p>横幅仅展示底层图片；左上文字由 WiX 动态绘制，因此右侧品牌图标不会与页面标题重叠。</p>
+  <section class="card">
+    <h2>顶部横幅</h2>
+    <div class="banner-preview">
+      <img src="../preview/wix-banner@4x.png" alt="">
+      <div class="dynamic-title">安装说明</div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>左侧安装画面</h2>
+    <img class="dialog-preview" src="../preview/wix-dialog@4x.png" alt="">
+  </section>
+</body>
+</html>

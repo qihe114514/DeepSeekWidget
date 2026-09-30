@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeepSeek Widget Installer Dialog</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { width: 493px; height: 312px; margin: 0; padding: 0; overflow: hidden; }
+  body { background: #f7f9fc; }
+  .dialog {
+    position: relative;
+    width: 493px;
+    height: 312px;
+    overflow: hidden;
+    background: #f7f9fc;
+  }
+  .card-circle {
+    position: absolute;
+    border-radius: 50%;
+    background: #eaf2fa;
+  }
+  .card-circle.top { top: -100px; right: -108px; width: 232px; height: 232px; }
+  .card-circle.bottom { right: -92px; bottom: -104px; width: 248px; height: 248px; }
+  .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 144px;
+    overflow: hidden;
+    background: linear-gradient(160deg, #202938 0%, #151c27 46%, #0e1118 100%);
+  }
+  .sidebar::before {
+    content: "";
+    position: absolute;
+    left: -43px;
+    bottom: -56px;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 48% 42%, #234a80 0%, #1a3a6d 68%, #17325f 100%);
+    box-shadow: 0 0 0 1px rgba(126, 174, 235, .08);
+  }
+  .accent {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(180deg, #2f80ed 0%, #4a9dff 58%, #347fd8 100%);
+    box-shadow: 0 0 7px rgba(47, 128, 237, .28);
+  }
+  .brand {
+    position: absolute;
+    top: 34px;
+    left: 0;
+    width: 144px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 2;
+  }
+  .brand-icon {
+    display: block;
+    width: 76px;
+    height: 76px;
+    filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .22));
+  }
+  .brand-name {
+    margin-top: 14px;
+    color: #fff;
+    font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 700;
+    letter-spacing: .1px;
+  }
+  .brand-cn {
+    margin-top: 3px;
+    color: #f3f7fd;
+    font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    font-size: 11.5px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+  <div class="dialog">
+    <div class="card-circle top"></div>
+    <div class="card-circle bottom"></div>
+    <aside class="sidebar">
+      <div class="accent"></div>
+      <div class="brand">
+        <img class="brand-icon" src="app-icon-256.png" alt="">
+        <div class="brand-name">DeepSeek</div>
+        <div class="brand-cn">余额小组件</div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

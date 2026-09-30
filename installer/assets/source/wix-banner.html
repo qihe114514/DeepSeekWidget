@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeepSeek Widget Installer Banner</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { width: 493px; height: 58px; margin: 0; padding: 0; overflow: hidden; }
+  body { background: #0a0d12; }
+  .banner {
+    position: relative;
+    width: 493px;
+    height: 58px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 385px 32px, rgba(67, 118, 171, .22), rgba(67, 118, 171, 0) 102px),
+      linear-gradient(112deg, #0a0d12 0%, #101722 58%, #182536 100%);
+  }
+  .banner::before {
+    content: "";
+    position: absolute;
+    top: -24px;
+    right: -74px;
+    width: 168px;
+    height: 106px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #315f8f 0%, #203e62 72%, #1a3150 100%);
+    box-shadow: inset 18px 0 32px rgba(255, 255, 255, .035);
+  }
+  .banner::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,.05), rgba(95,153,211,.26), rgba(255,255,255,.03));
+  }
+  .brand-mark {
+    position: absolute;
+    top: 11px;
+    right: 22px;
+    width: 36px;
+    height: 36px;
+    z-index: 2;
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .3));
+  }
+</style>
+</head>
+<body>
+  <div class="banner">
+    <img class="brand-mark" src="app-icon-256.png" alt="">
+  </div>
+</body>
+</html>

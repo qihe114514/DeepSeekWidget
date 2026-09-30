@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1972" height="232" viewBox="0 0 493 58">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0D12"/>
+      <stop offset="1" stop-color="#171E2A"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#213553"/>
+      <stop offset="1" stop-color="#2B517B"/>
+    </linearGradient>
+    <linearGradient id="iconStroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2F80ED"/>
+      <stop offset="1" stop-color="#66B6FF"/>
+    </linearGradient>
+    <linearGradient id="curve" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#294C75"/>
+      <stop offset="1" stop-color="#1E3A5B"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="493" height="58" fill="url(#base)"/>
+  <path d="M418 0H493V58H418C396 58 389 44 389 29C389 13 397 0 418 0Z" fill="url(#curve)"/>
+  <path d="M397 2C405 21 405 39 397 56" fill="none" stroke="#6B90B8" stroke-opacity="0.18" stroke-width="1"/>
+
+  <rect x="0" y="0" width="389" height="58" fill="url(#accent)" opacity="0.24"/>
+  <rect x="25" y="12" width="34" height="34" rx="10" fill="#101923" stroke="url(#iconStroke)" stroke-width="2.1"/>
+  <text x="42" y="36.8" text-anchor="middle" fill="#FFFFFF" font-family="Microsoft YaHei UI, Segoe UI, sans-serif" font-size="21" font-weight="700">¥</text>
+
+  <text x="67" y="23" fill="#FFFFFF" font-family="Segoe UI, Microsoft YaHei UI, sans-serif" font-size="14" font-weight="700">DeepSeek 余额小组件</text>
+  <text x="67" y="40" fill="#AAB2C0" font-family="Microsoft YaHei UI, Segoe UI, sans-serif" font-size="10.5" font-weight="500">余额 · 用量 · 缓存命中率</text>
+</svg>

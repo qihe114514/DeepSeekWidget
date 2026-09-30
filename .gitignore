@@ -3,6 +3,19 @@ vendor/
 
 # 本工具运行目录
 .reasonix/
+.yanagent/
 
 # 日志
 *.log
+
+# 构建输出
+bin/
+obj/
+installer/publish*/
+installer/.cache/
+installer-lite/payload/
+
+# 发布产物与本地依赖缓存
+dist/
+packages-local/
+packages-restore/
